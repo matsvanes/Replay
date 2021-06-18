@@ -8,12 +8,13 @@
 % coherence over channels (either random channels or according to strength
 % of decoding weights) - and we still have chance level decoding, we're
 % probably fine.
-clear
+close all, clear
 % study info
 MFStartup_studyII;
 analysisdir = '/Volumes/T5_OHBA/analysis/replay/';
 
 % load trained decoding model
+
 iSj=1;
 iSjGood=is.goodsub(iSj);
 % load classifier
@@ -21,47 +22,66 @@ load([analysisdir,'classifiers/TrainedStim4Cell/','L1regression/','Lsj' num2str(
 
 iL1=3; % lambda = 0.003
 
-gnf=gnf(:,iL1);
+gnf=gnf(:,iL1); % contains the learned decoding model for 8 stimuli
+
+A = 0.2; % general cosine amplitude
+f=10; % Hz
+chanphase = 'rand'; % can be 'beta', 'same', or 'rand';
 
 % create "resting state" data
 nchan = size(gnf{1}.beta,1);
-fs = 100;
-time = 1/fs:1/fs:300;
-data_woa = rand(nchan,numel(time));
+fs = 1000;
+time = 1/fs:1/fs:30;
+plot_t = time(1:1000); % selection of the time axis
+data_woa = rand(nchan,numel(time)); % random data
 
 % find the largest average beta to construct weights for alpha (largest
 % beta weights should also have highest alpha signal).
-for i=1:8
-  betas(i,:) = gnf{i}.beta;
+for ii=1:8
+  betas(ii,:) = gnf{ii}.beta;
 end
-avgbeta = mean(betas,1);
-alpha_amp = 1; % general alpha amplitude
-alpha_amp = alpha_amp*sort(rand(nchan,1)); % different weights for each channel
+avgbeta = mean(abs(betas),1);
+alpha_amp = A*sort(normrnd(0.5,0.15,[nchan,1])); % different weights for each channel
 
 % give the sensors with largest abs(beta) also the largest alpha amp
-[~, idx] = sort(abs(avgbeta));
+[~, idx] = sort(avgbeta);
 alpha_amp(idx)=alpha_amp;
+figure; plot(avgbeta, alpha_amp, '.'); xlabel('avgbeta'), ylabel('alpha amp'), title('those sensors with high beta weights also have strongest alpha components')
 
-f=10;
-% we can give all channels the same phase
-phase=2*pi*rand(1)*zeros(nchan,1);
-% alternatively, different phase for each channel
-phase=(2*pi)*rand(nchan,1);
-alpha_signal = alpha_amp.*cos(2*pi*f*time + phase);
+
+switch chanphase
+  case 'same' % we can give all channels the same phase
+    theta=2*pi*rand(1)*ones(nchan,1);
+  case 'rand' % random phase for each chan
+    theta=2*pi*rand(nchan,1);  
+  case 'beta' % different phase for each channel, depending on beta weight
+    theta=(2*pi)*rand(nchan,1); theta(idx)=theta;
+end
+alpha_signal = alpha_amp.*cos(2*pi*f*time + theta);
 data_wa = data_woa + alpha_signal;
+figure; subplot(2,1,1); plot(plot_t,[1:10]' + alpha_signal(1:10,1:numel(plot_t)))
+subplot(2,1,2); plot(plot_t,[1:10]' + data_wa(1:10,1:numel(plot_t)))
 
+clear i
+c = cos(2*pi*f*time) + i*sin(2*pi*f*time); % raw alpha signal
+phase = angle(c);
+phase = repmat(phase, [8 1])';
+figure; subplot(2,1,1), plot(plot_t, real(c(1:numel(plot_t)))), xlabel('time'), title('amplitude')
+subplot(2,1,2), plot(plot_t, phase(1:numel(plot_t),1)), xlabel('time'), title('phase')
 
+data_woa = scaleFunc(data_woa);
+data_wa = scaleFunc(data_wa);
 f1=figure; f1.WindowState='maximized';
-subplot(2,1,1), plot(time(1:100), data_woa(idx(end), 1:100)), title('data without alpha'), xlabel('time')
-subplot(2,1,2), plot(time(1:100), data_wa(idx(end), 1:100)), title('data with alpha'), xlabel('time')
+subplot(2,1,1), plot(plot_t, data_woa(idx(end), 1:numel(plot_t))), title('data without alpha'), xlabel('time')
+subplot(2,1,2), plot(plot_t, data_wa(idx(end), 1:numel(plot_t))), title('data with alpha'), xlabel('time')
 
 %% Now apply the decoding models on the simulated data
 % First the data w/o alpha
 r_woa = zeros(numel(time), 8);
 r_wa = zeros(numel(time), 8);
-for i=1:8
-  r_woa(:,i) = -(data_woa' * gnf{i}.beta + gnf{i}.Intercept);
-  r_wa(:,i) = -(data_wa' * gnf{i}.beta + gnf{i}.Intercept);
+for ii=1:8
+  r_woa(:,ii) = (data_woa' * gnf{ii}.beta + gnf{ii}.Intercept);
+  r_wa(:,ii) = (data_wa' * gnf{ii}.beta + gnf{ii}.Intercept);
 end
 
 % apply logistic sigmoid to go to probabilities:
@@ -69,39 +89,71 @@ prob_woa=1./(1+exp(-r_woa));
 prob_wa=1./(1+exp(-r_wa));
 
 % threshold probabilities
-iThr_woa = prob_woa>0.95;
-iThr_wa = prob_wa>0.95;
+perc=5;
+% iThr_woa = prob_woa>0.95;
+[~, sortIdx_woa] = sort(prob_woa, 'descend');
+sortIdx_woa_sel = sortIdx_woa(1:size(prob_woa,1)*perc/100,:);
 
-t=time(1:100);
+% iThr_wa = prob_wa>0.95;
+[~, sortIdx_wa] = sort(prob_wa, 'descend');
+sortIdx_wa_sel = sortIdx_wa(1:size(prob_wa,1)*perc/100,:);
+
+% phases at highest percentile probability
+phase_woa_probthr = phase(sortIdx_woa_sel);
+phase_wa_probthr = phase(sortIdx_wa_sel);
+
+% plot probabilities and selected probabilities
 f2=figure; f2.WindowState='maximized';
-subplot(2,2,1); plot(t,prob_woa(1:100,:)), ylim([0.5 1]), title('probability - no alpha')
-subplot(2,2,2); pth=iThr_woa(1:100,:).*prob_woa(1:100,:); pth(pth==0)=nan; plot(t,pth), ylim([0.5 1]), title('probability (thresholded) - no alpha')
-subplot(2,2,3); plot(t,prob_wa(1:100,:)), ylim([0.5 1]), title('probability - with alpha')
-subplot(2,2,4); pth=iThr_wa(1:100,:).*prob_wa(1:100,:); pth(pth==0)=nan; plot(t,pth), ylim([0.5 1]), title('probability (thresholded) - with alpha')
+subplot(2,2,1); plot(plot_t,prob_woa(1:numel(plot_t),:)), title('probability - no alpha')
+subplot(2,2,2); pth = prob_woa; pth(pth<prob_woa(sortIdx_woa(perc*100)))=nan; plot(plot_t,pth(1:numel(plot_t),:)), title('probability (thresholded) - no alpha')
+subplot(2,2,3); plot(plot_t,prob_wa(1:numel(plot_t),:)), title('probability - with alpha')
+subplot(2,2,4); pth = prob_wa; pth(pth<prob_wa(sortIdx_wa(perc*100)))=nan; plot(plot_t,pth(1:numel(plot_t),:)), title('probability (thresholded) - with alpha')
 
-c = cos(2*pi*f*time); % raw alpha signal
-phase = angle(fft(c));
-
-% alpha phase of highest probabilities
-for i=1:8
-  X_woa{i} = phase(iThr_woa(:,i));
-  X_wa{i} = phase(iThr_wa(:,i));
+% do the same thing for random probabilities (permutations)
+nperm=1000;
+phase_woa_perm = zeros(8,numel(time)*perc/100, nperm);
+phase_wa_perm = zeros(8,numel(time)*perc/100, nperm);
+for ii=1:nperm
+  for j=1:8
+    permIdx_woa = randperm(numel(time),numel(time)*perc/100);
+    phase_woa_perm(j,:,ii) = phase(permIdx_woa,j);
+    
+    permIdx_wa = randperm(numel(time),numel(time)*perc/100);
+    phase_wa_perm(j,:,ii) = phase(permIdx_wa,j);
+  end
 end
-
+% alpha phase of highest probabilities
 f3=figure; f3.WindowState='maximized';
 for ii = 1:8
   axesHandle(ii,1) = subplot(2,8,ii);
   polarAxesHandle(ii,1) = polaraxes('Units',axesHandle(ii,1).Units,'Position',axesHandle(ii,1).Position);
   delete(axesHandle(ii,1));
-  polarhistogram(polarAxesHandle(ii,1),X_woa{ii})
+  polarhistogram(polarAxesHandle(ii,1),reshape(phase_woa_perm(ii,:,:), 1, []),20); hold on
+  polarhistogram(polarAxesHandle(ii,1),repmat(phase_woa_probthr(:,ii), 500,1),20)
   title(sprintf('no alpha \n stimulus %d', ii))
   
   axesHandle(ii,2) = subplot(2,8,ii+8);
   polarAxesHandle(ii,2) = polaraxes('Units',axesHandle(ii,2).Units,'Position',axesHandle(ii,2).Position);
   delete(axesHandle(ii,2));
-  polarhistogram(polarAxesHandle(ii,2),X_wa{ii})
+  polarhistogram(polarAxesHandle(ii,2),reshape(phase_wa_perm(ii,:,:), 1, []),20); hold on
+  polarhistogram(polarAxesHandle(ii,2),repmat(phase_wa_probthr(:,ii), 500,1),20)
   title(sprintf('with alpha \n stimulus %d', ii))
 end
 suptitle('alpha phase preference for highest 5% probabilities')
-figure(2);
-figure(1);
+
+%%
+%{
+% compare correlations phase with decoding probability (with and without alpha)
+for ii =1:8
+  r_prob_phase_woa(ii) = circ_corrcl(phase(:,ii), log10(prob_woa(:,ii)));
+  r_prob_phase_wa(ii) = circ_corrcl(phase(:,ii), log10(prob_wa(:,ii)));
+end
+ttest(r_prob_phase_wa, r_prob_phase_woa, 'tail', 'right')
+
+% compare distribution of phase with highest probabilities with uniform
+% distribution. Probably need nonparametric test here (Hodges-Ajne) instead
+% of parametric (Rayleigh). 
+for ii=1:8
+  p_nonuniform(ii) = circ_otest(phase_wa_probthr(:,ii));
+end
+%}
