@@ -5,9 +5,9 @@ STUDYII_SpecifySubjects_ALL_forCam;
 %data_dir = get_homedir();
 dir = pwd;
 if isfolder('/Volumes/T5_OHBA/')
-    data_dir = '/Volumes/T5_OHBA/data/replay/StrLearn_MEGexp/';
+    data_dir = '/Volumes/T5_OHBA/data/replay/StrLearn_MEGexp';
 else
-    data_dir = '/Volumes/CamsHD2/YunzheData/StrLearn_MEGexp/';
+    data_dir = '/ohba/pi/mwoolrich/datasets/ReplayData/StrLearn_MEGexp/';
 end
 is.fs = filesep;
 is.rootBehav = [data_dir,'\BehavData\'];
@@ -16,7 +16,7 @@ is.networkPath = [data_dir,'\MEGData\'];   % where to pull the unpreprocessed ME
 %is.smthdPath = ' ';
 is.OPTPath = [data_dir,'\OPTdata\'];
 %is.BFPath = 'C:\Users\yliu\Dropbox\Projects\UCL\Experiment04_Replay_StrLearn\Data\Beamforming\';
-is.AnalysisPath = [data_dir,'\Analysis\'];
+is.AnalysisPath = '/Volumes/T5_OHBA/analysis/replay';
 
 is.pNames = {'epsilon', 'beta', 'gammaG', 'gammaS', 'psi4', 'psiA'};
 is.smoothFact = 6; 
