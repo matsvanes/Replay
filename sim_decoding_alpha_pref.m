@@ -8,8 +8,10 @@
 % coherence over channels (either random channels or according to strength
 % of decoding weights) - and we still have chance level decoding, we're
 % probably fine.
-close all, clear
-useReplayModels = false;
+%close all, clear
+rng('shuffle')
+decoding_model = 'lassoglm'; % can be 'lassoglm'
+useReplayModels = true;
 A = 0.2; % general cosine amplitude
 f=10; % Hz
 chanphase = 'rand'; % can be 'beta', 'same', or 'rand';
@@ -38,7 +40,7 @@ if useReplayModels
   
   for ii=1:8
     beta{ii} = gnf{ii}.beta;
-    intercept(ii) = gnf{ii}.Intercept;
+    intercept{ii} = gnf{ii}.Intercept;
   end
 else
   % simulate decoding model
@@ -54,29 +56,34 @@ else
   for ii=1:8
     
     labels = [truedata_labels == ii; zeros(size(nulldata,1),1)];
-    l2p=0;l1p=0.003;
-    [beta{ii}, fitInfo{ii}] = lassoglm([truedata; nulldata], labels, 'binomial', ...
-      'Alpha', l1p / (2*l2p+l1p), 'Lambda', 2*l2p + l1p, 'Standardize', false);
-    intercept{ii} = fitInfo{ii}.Intercept;
+    switch decoding_model
+      case 'lassoglm'
+        l2p=0;l1p=0.003;
+        [beta{ii}, fitInfo{ii}] = lassoglm([truedata; nulldata], labels, 'binomial', ...
+          'Alpha', l1p / (2*l2p+l1p), 'Lambda', 2*l2p + l1p, 'Standardize', false);
+        intercept{ii} = fitInfo{ii}.Intercept;
+      case 'svmrbf'
+        model{ii} = fitrsvm([truedata; nulldata], labels, 'KernelFunction', 'rbf', 'KernelScale', 'auto', 'Standardize', true);
+    end
   end
-  
 end
 
 data_woa = rand(nchan,numel(time)); % random data
 
-% find the largest average beta to construct weights for alpha (largest
-% beta weights should also have highest alpha signal).
-for ii=1:8
-  betas(ii,:) = beta{ii};
-end
-avgbeta = mean(abs(betas),1);
 alpha_amp = A*sort(normrnd(0.5,0.15,[nchan,1])); % different weights for each channel
-
-% give the sensors with largest abs(beta) also the largest alpha amp
-[~, idx] = sort(avgbeta);
-alpha_amp(idx)=alpha_amp;
-figure; plot(avgbeta, alpha_amp, '.'); xlabel('avgbeta'), ylabel('alpha amp'), title('those sensors with high beta weights also have strongest alpha components')
-
+if useReplayModels
+  % find the largest average beta to construct weights for alpha (largest
+  % beta weights should also have highest alpha signal).
+  for ii=1:8
+    betas(ii,:) = beta{ii};
+  end
+  avgbeta = mean(abs(betas),1);
+  
+  % give the sensors with largest abs(beta) also the largest alpha amp
+  [~, idx] = sort(avgbeta);
+  alpha_amp(idx)=alpha_amp;
+  figure; plot(avgbeta, alpha_amp, '.'); xlabel('avgbeta'), ylabel('alpha amp'), title('those sensors with high beta weights also have strongest alpha components')
+end
 
 switch chanphase
   case 'same' % we can give all channels the same phase
@@ -100,25 +107,58 @@ subplot(2,1,2), plot(plot_t, phase(1:numel(plot_t),1)), xlabel('time'), title('p
 
 data_woa = scaleFunc(data_woa);
 data_wa = scaleFunc(data_wa);
-f1=figure; f1.WindowState='maximized';
-subplot(2,1,1), plot(plot_t, data_woa(idx(end), 1:numel(plot_t))), title('data without alpha'), xlabel('time')
-subplot(2,1,2), plot(plot_t, data_wa(idx(end), 1:numel(plot_t))), title('data with alpha'), xlabel('time')
+
+if useReplayModels
+  f1=figure; f1.WindowState='maximized';
+  subplot(2,1,1), plot(plot_t, data_woa(idx(end), 1:numel(plot_t))), title('random data without alpha'), xlabel('time')
+  subplot(2,1,2), plot(plot_t, data_wa(idx(end), 1:numel(plot_t))), title('random data with alpha'), xlabel('time')
+end
 
 %% Now apply the decoding models on the simulated data
-% First the data w/o alpha
+% demean spatial map at each time point
+if 0
+  data_woa  = data_woa-mean(data_woa,1);
+  data_wa  = data_wa-mean(data_wa,1);
+%   data_woa  = zscore(data_woa,[],2);
+%   data_wa  = zscore(data_wa,[],2);
+end
+
+% demean beta maps
+if 0
+  for i=1:8
+    % only the nonzero element
+    beta{i}(beta{i}~=0) = (beta{i}(beta{i}~=0) - mean(beta{i}(beta{i}~=0)));%./std(beta{i}(beta{i}~=0));
+    % all elements
+    % beta{i} = demean(beta{i});
+  end
+end
+
+
 r_woa = zeros(numel(time), 8);
 r_wa = zeros(numel(time), 8);
 for ii=1:8
-  r_woa(:,ii) = (data_woa' * beta{ii} + intercept{ii});
-  r_wa(:,ii) = (data_wa' * beta{ii} + intercept{ii});
+  switch decoding_model
+    case 'lassoglm'
+      r_woa(:,ii) = (data_woa' * beta{ii} + intercept{ii});
+      r_wa(:,ii) = (data_wa' * beta{ii} + intercept{ii});
+    case 'svmrbf'
+      r_woa(:,ii) = predict(model{ii}, data_woa');
+      r_wa(:,ii) = predict(model{ii}, data_wa');
+    case 'spatialmap'
+      r_woa(:,ii) = abs(beta{ii}'*data_woa);
+      r_wa(:,ii) = abs(beta{ii}'*data_wa);
+  end
 end
 
 % apply logistic sigmoid to go to probabilities:
-prob_woa=1./(1+exp(-r_woa));
-prob_wa=1./(1+exp(-r_wa));
+if strcmp(decoding_model, 'lassoglm') || strcmp(decoding_model, 'svmrbf')
+  prob_woa=1./(1+exp(-r_woa));
+  prob_wa=1./(1+exp(-r_wa));
+end
 
 % threshold probabilities
 perc=5;
+
 % iThr_woa = prob_woa>0.95;
 [~, sortIdx_woa] = sort(prob_woa, 'descend');
 sortIdx_woa_sel = sortIdx_woa(1:size(prob_woa,1)*perc/100,:);
@@ -133,10 +173,8 @@ phase_wa_probthr = phase(sortIdx_wa_sel);
 
 % plot probabilities and selected probabilities
 f2=figure; f2.WindowState='maximized';
-subplot(2,2,1); plot(plot_t,prob_woa(1:numel(plot_t),:)), title('probability - no alpha')
-subplot(2,2,2); pth = prob_woa; pth(pth<prob_woa(sortIdx_woa(perc*100)))=nan; plot(plot_t,pth(1:numel(plot_t),:)), title('probability (thresholded) - no alpha')
-subplot(2,2,3); plot(plot_t,prob_wa(1:numel(plot_t),:)), title('probability - with alpha')
-subplot(2,2,4); pth = prob_wa; pth(pth<prob_wa(sortIdx_wa(perc*100)))=nan; plot(plot_t,pth(1:numel(plot_t),:)), title('probability (thresholded) - with alpha')
+subplot(1,2,1); plot(plot_t,prob_woa(1:numel(plot_t),:)), title('probability - no alpha')
+subplot(1,2,2); plot(plot_t,prob_wa(1:numel(plot_t),:)), title('probability - with alpha')
 %{
 % do the same thing for random probabilities (permutations)
 nperm=1000;
@@ -183,9 +221,38 @@ end
 figure; plot(r_prob_phase_woa, 'O'), hold on, plot(r_prob_phase_wa, 'O'), xlabel('stimulus'), ylabel('R'),title('circular correlation between phase and probability'), legend({'w/o alpha','w/ alpha'})
 
 
+%% Compare the with alpha data top 5% to the bottom 5%
 
+% iThr_wa = prob_wa>0.95;
+[~, sortIdx_wa] = sort(prob_wa, 'descend');
+sortIdx_wa_sel_top = sortIdx_wa(1:size(prob_wa,1)*perc/100,:);
 
+[~, sortIdx_wa] = sort(prob_wa, 'ascend');
+sortIdx_wa_sel_bottom = sortIdx_wa(1:size(prob_wa,1)*perc/100,:);
 
+% phases at highest percentile probability
+phase_wa_probthr_top = phase(sortIdx_wa_sel_top);
+phase_wa_probthr_bottom = phase(sortIdx_wa_sel_bottom);
 
-
+f3=figure; f3.WindowState='maximized';
+for ii = 1:8
+  % W/o alpha
+  p_nonuniform = circ_otest(phase_wa_probthr_top(:,ii));
+  axesHandle(ii,1) = subplot(2,8,ii); hold on
+  polarAxesHandle(ii,1) = polaraxes('Units',axesHandle(ii,1).Units,'Position',axesHandle(ii,1).Position);
+  delete(axesHandle(ii,1));
+  %   polarhistogram(polarAxesHandle(ii,1),reshape(phase_woa_perm(ii,:,:), 1, []),20); hold on
+  polarhistogram(polarAxesHandle(ii,1),repmat(phase_wa_probthr_top(:,ii), 500,1),20)
+  title(sprintf('w/o alpha \n stimulus %d \n nonuniformity pval=%s', ii, num2str(round(p_nonuniform,2, 'significant'))))
+  
+  % With alpha
+  p_nonuniform = circ_otest(phase_wa_probthr_bottom(:,ii));
+  axesHandle(ii,2) = subplot(2,8,ii+8);
+  polarAxesHandle(ii,2) = polaraxes('Units',axesHandle(ii,2).Units,'Position',axesHandle(ii,2).Position);
+  delete(axesHandle(ii,2));
+  %   polarhistogram(polarAxesHandle(ii,2),reshape(phase_wa_perm(ii,:,:), 1, []),20); hold on
+  polarhistogram(polarAxesHandle(ii,2),repmat(phase_wa_probthr_bottom(:,ii), 500,1),20)
+  title(sprintf('w/ alpha \n stimulus %d \n nonuniformity pval=%.1e', ii, p_nonuniform))
+end
+suptitle(sprintf('alpha phase preference for highest %d percent probabilities',perc))
 
