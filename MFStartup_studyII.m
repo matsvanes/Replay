@@ -4,19 +4,19 @@ STUDYII_SpecifySubjects_ALL_forCam;
 %% GENERAL STUFF
 %data_dir = get_homedir();
 dir = pwd;
-if isfolder('/Volumes/T5_OHBA/')
-    data_dir = '/Volumes/T5_OHBA/data/replay/StrLearn_MEGexp';
+if isfolder('/Users/matsvanes/')
+    data_dir = '/Users/matsvanes/Data/YunzheData/StrLearn_MEGexp/';
 else
     data_dir = '/ohba/pi/mwoolrich/datasets/ReplayData/StrLearn_MEGexp/';
 end
 is.fs = filesep;
-is.rootBehav = [data_dir,'\BehavData\'];
-is.rootMEG = [data_dir,'\MEGData\'];
-is.networkPath = [data_dir,'\MEGData\'];   % where to pull the unpreprocessed MEG data from
+is.rootBehav = [data_dir,'BehavData/'];
+is.rootMEG = [data_dir,'MEGData/'];
+is.networkPath = [data_dir,'MEGData/'];   % where to pull the unpreprocessed MEG data from
 %is.smthdPath = ' ';
-is.OPTPath = [data_dir,'\OPTdata\'];
-%is.BFPath = 'C:\Users\yliu\Dropbox\Projects\UCL\Experiment04_Replay_StrLearn\Data\Beamforming\';
-is.AnalysisPath = '/Volumes/T5_OHBA/analysis/replay';
+is.OPTPath = [data_dir,'MEGData/OPTdata/'];
+%is.BFPath = 'C:/Users/yliu/Dropbox/Projects/UCL/Experiment04_Replay_StrLearn/Data/Beamforming/';
+is.AnalysisPath = [data_dir, 'Analysis/'];
 
 is.pNames = {'epsilon', 'beta', 'gammaG', 'gammaS', 'psi4', 'psiA'};
 is.smoothFact = 6; 
@@ -29,7 +29,7 @@ is.whichTimesSeq = [28:37, 67:76]; % this is for seq code, from 100ms to 200ms 2
 is.msPerSample = 1000 * is.smoothFact / 600; 
 is.lgncy = 1:60;  % the latencies to consider cross-correlation at, in units of samples
 is.Ltimes = is.lgncy*is.msPerSample/1000;
-is.nShuf = 20; %20;%20;%29;
+is.nShuf = 24; %20;%20;%29;
 is.ENL1 = 0.001:0.001:0.01;   % L1=lambda*alpha   L2=(lambda-lambda*alpha)/2
 is.whichSubj = 1:is.nSubj;%11:30;  % subject11 is the first non-pilot. 21 and 26 are excluded for huge artifacts.
 is.highpass = 0.5; % decide which hiph pass spec is used for the further analysis
@@ -46,27 +46,27 @@ pd =pwd;
 if strcmp(pd(1),'/')
     % mac: change all address identifiers:
     for i=1:length(is.rootBehav)
-        if strcmp(is.rootBehav(i),'\')
+        if strcmp(is.rootBehav(i),'/')
             is.rootBehav(i)='/';
         end
     end
     for i=1:length(is.rootMEG)
-        if strcmp(is.rootMEG(i),'\')
+        if strcmp(is.rootMEG(i),'/')
             is.rootMEG(i)='/';
         end
     end
     for i=1:length(is.networkPath)
-        if strcmp(is.networkPath(i),'\')
+        if strcmp(is.networkPath(i),'/')
             is.networkPath(i)='/';
         end
     end
     for i=1:length(is.OPTPath)
-        if strcmp(is.OPTPath(i),'\')
+        if strcmp(is.OPTPath(i),'/')
             is.OPTPath(i)='/';
         end
     end
     for i=1:length(is.AnalysisPath)
-        if strcmp(is.AnalysisPath(i),'\')
+        if strcmp(is.AnalysisPath(i),'/')
             is.AnalysisPath(i)='/';
         end
     end
