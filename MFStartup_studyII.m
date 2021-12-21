@@ -5,10 +5,11 @@ STUDYII_SpecifySubjects_ALL_forCam;
 %data_dir = get_homedir();
 dir = pwd;
 if isfolder('/Users/matsvanes/')
-    data_dir = '/Users/matsvanes/Data/YunzheData/StrLearn_MEGexp/';
+    is.studydir = '/Users/matsvanes/Data/YunzheData/';
 else
-    data_dir = '/ohba/pi/mwoolrich/datasets/ReplayData/StrLearn_MEGexp/';
+    is.studydir = '/ohba/pi/mwoolrich/datasets/ReplayData/';
 end
+data_dir = [is.studydir, 'StrLearn_MEGexp/'];
 is.fs = filesep;
 is.rootBehav = [data_dir,'BehavData/'];
 is.rootMEG = [data_dir,'MEGData/'];
