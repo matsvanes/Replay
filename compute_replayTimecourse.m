@@ -5,7 +5,7 @@ function ToRall = compute_replayTimecourse(is,iLCV,Mreplay,iRun)
 [~,lag] = max(abs(Mreplay));
 for iSj=1:length(is.goodsub)
   % take that subject's CV parameter selection:
-  iL = iLCV(iSj);
+  iL = 5;% hard coded because this is used in the past. No crossvalidation!! %iLCV(iSj);
    
   % load reactivation timecourse:
   S = load([is.AnalysisPath,'classifiers/TestResting4Cell/','Rreds' num2str(iSj) '_' num2str(iRun)]); Rreds = S.Rreds;  % load this subject's preds
