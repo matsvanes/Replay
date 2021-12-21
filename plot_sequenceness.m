@@ -1,3 +1,4 @@
+function plot_sequenceness(is)
 %% NOTE: THIS IS NOT WORKING PROPERLY
 
 %% analyse pooled saved values and plot as image:
