@@ -1,120 +1,125 @@
-% This script should load in pre-trained decoding models (trained on
-% localiser trials) of the Replay dataset (studyII). It should then apply this to
-% resting state data. The probabilities in the post-task resting state data
-% should be higher than on the pre-task resting state. The working
-% hypothesis is that the phase concentration of the highest percentile
-% probabilities is also higher for the post-task compared to the pre-task
-% resting state data
+% This script loads in probabilities of the decoding model applied to
+% resting state data. Based on source parcellations, the hypothesis is
+% tested whether the highest probabilities are phase clustered (e.g. in the
+% theta/alpha band), w.r.t. the lowest probabilities (this is a good
+% control because classifiers have a trivial phase preference).
 % 2021 - Mats van Es
 
-% define some study specific variables.
-lambda = 0.006; % used by https://doi.org/10.1016/j.cell.2019.06.012 (VERIFY!)
-MFStartup_studyII;
-lambda_idx = find(is.ENL1==lambda);
-analysisdir = '/Volumes/T5_OHBA/analysis/replay/';
-dirname='L1regression/';
-whenInMS = is.tss*is.msPerSample;
-TOI = 0.200; % 200ms post stimulus.
-sessionsOfInterest = [1,2,3,4,8]; % rst, lci, lci, lci, rst
-pretask=1;
-posttask=2;
-nStim = 8;
-ntrlAll=120; % per session (includes upside down images)
-ntrlValid=96; % per session
-nSes = 3;
-perc=1; % highest percentile probabilities to use
+%% Define some variables
+whichstudy = 2;
+if whichstudy==1
+  MFStartup;
+else
+  MFStartup_studyII;
+  load('/Volumes/T5_OHBA/data/replay/StrLearn_MEGexp/BehavData/Exptrial.mat')
+  is.dirname='StrLearn_MEGexp/';
+  savebase = '/Users/matsvanes/Data/YunzheData/PhasePreference/StrLearn_MEGexp/';
+end
+datadir = [is.studydir,'Neuron2020Analysis/Study2/bfnew_1to45hz/'];
+if ~isfolder(is.AnalysisPath),   mkdir(is.AnalysisPath), end
+is.usePrecomputed = true;
+is.iRun = 2;
+is.topPercentile=1;
+fsample=250;
+t_window=fsample/2;
+parc=parcellation('fmri_d100_parcellation_with_PCC_reduced_2mm_ss5mm_ds8mm.nii.gz');
+FOI = 'alpha'; % can be 'alpha', 'theta'
 
-
-mkdir([analysisdir,'phase']);
-GoodChannel=nan(length(is.goodsub),273,numel(sessionsOfInterest)); %nsubject*nsensors*nruns
-for iSj = 1%:length(is.goodsub)
-  figure;
-  iSjGood=is.goodsub(iSj);
-  
-  % find good channels in all sessions of interest
-  cnt=1;
-  for isession=sessionsOfInterest
-    tempdir=[is.OPTPath strrep(is.fnDate{iSjGood},'-','_') '/' is.fnMEG{iSjGood} '_' num2str(isession,'%02d') '.ds/highpass_' num2str(is.highpass) '.opt'];
-    load(fullfile(tempdir, 'opt.mat'));
-    if isempty (opt.results.spm_files_epoched{1,1})
-      SessionMEG=spm_eeg_load(fullfile(tempdir,[opt.results.spm_files_basenames{1,1}]));
-    else
-      SessionMEG=spm_eeg_load(fullfile(tempdir,[opt.results.spm_files_epoched_basenames{1,1}]));
-    end
-    chan_inds = indchantype(SessionMEG,'meeg','GOOD');
-    Channindex  = indchantype(SessionMEG,'meeg','ALL');
-    [~,ind]=setdiff(Channindex,chan_inds);
-    
-    index=ones(1,273);
-    index(ind)=0;
-    GoodChannel(iSj,:,cnt)=index;
-    cnt=cnt+1;
-    clear opt;
+%% Get alpha peak frequency
+if strcmp(FOI,'alpha')
+  for iSj=1:length(is.goodsub)
+    sprintf('Subject %d', iSj)
+    RST = spm_eeg_load([datadir, sprintf('sfold_giles_symmetric_f_session%d', iSj*2)]);
+    doplot=0;
+    [~, peakfreq(iSj)] = compute_peakfreq(RST, 2:0.1:20, [],[], doplot);
   end
-  
-  % load in decoding model
-  gnf = load([analysisdir,'classifiers/TrainedStim4Cell/',dirname,'Lsj' num2str(iSj)], 'gnf') ; % get the gnf variable with the regression models
-  % select the one corresponding to the correct lambda
-  gnf = gnf.gnf(:,lambda_idx);
-  
-  % load resting state data
-  for iRun = [pretask, posttask]
-    dstInd = find(ismember(is.MEGruns{iSjGood},'rst'));
-    dir_temp=[is.OPTPath strrep(is.fnDate{iSjGood},'-','_') '/' is.fnMEG{iSjGood} '_' num2str(dstInd(iRun),'%02d') '.ds/highpass_' num2str(is.highpass) '.opt'];
-    opt=load(fullfile(dir_temp, 'opt.mat'));
-    opt=opt.opt;
-    RST=spm_eeg_load(fullfile(dir_temp,[opt.results.spm_files_basenames{1,1}]));
-    
-    % Good timepoints/trials
-    good_samples = ~all(badsamples(RST,':',':',':'));
-    
-    % Select MEG channel:
-    chan_meg = indchantype(RST,'meeg');
-    rRST = RST(chan_meg,:,:);
-    
-    sjchannel=squeeze(GoodChannel(iSj,:,:));
-    goodchannindex= nansum(sjchannel')==length(sessionsOfInterest);
-    rRST = rRST(logical(goodchannindex),:,:);
-    
-    % get the interval between the start and the end
-    evtypes = RST.events; evtypes = {evtypes(:).type}';
-    evvals = RST.events; evvals = {evvals(:).value}';
-    evvals(all(cellfun(@ischar,evvals),2),:) = {0}; % replace string with 0
-    evvals=cell2mat(evvals); %convert cell to double
-    evtimes = RST.events; evtimes = [evtimes(:).time]';
-    
-    RestingTriggerVals = [87, 88]; %MVE: is mistake in code or comment??--> % 87 for the resting state BEFORE reward learning, 88 for the resting state AFTER reward learning
-    RestStmInds = strcmp('frontpanel trigger', evtypes) & ismember(evvals, RestingTriggerVals(iRun));    % onset of Resting
-    RestStmTimes = evtimes(RestStmInds);
-    
-    EndTriggerVals = [99];
-    EndStmInds = strcmp('frontpanel trigger', evtypes) & ismember(evvals, EndTriggerVals);  % end of Resting
-    EndStmTimes = evtimes(EndStmInds);
-    
-    wholetimeindex=zeros(size(RST,2),1);
-    
-    wholetimeindex(floor(RestStmTimes(end)*100):floor(RestStmTimes(end)*100)+30000-1)=1;
-    
-    % set the artifacts to zero
-    badwithin_index= wholetimeindex==1 & double(good_samples')==0;
-    rRST(:,badwithin_index)=0;
-    data = rRST(:,logical(wholetimeindex));
-    
-    data = data'; % transform data format to nsamples*nsensors
-    data = scaleFunc(data);
-    data(data==0)=nan; % remove zeros
-    %     % apply classifier to the clean data
-    %     if isempty(RestStmTimes)
-    %       nTr = 1;
-    %     else
-    %       nTr = length(RestStmTimes);
-    %     end
-    
+end
+
+%% Get phases
+[~,~,triggerpoints,goodsamples]=getSubjectMasks(datadir);
+triggerpoints = triggerpoints(2:2:end); % only need post-task data
+goodsamples = goodsamples(2:2:end);
+
+for iSj=1:length(is.goodsub)
+  sprintf('Subject %d', iSj)
+  RST = spm_eeg_load([datadir, sprintf('sfold_giles_symmetric_f_session%d', iSj*2)]);
+
+  % get FOI phase
+  if strcmp(FOI, 'alpha')
+    [phase{iSj}, pow{iSj}, maxidx(iSj)] = getphasetimecourse(RST, peakfreq(iSj));
+  elseif strcmp(FOI,'theta')
+    [phase{iSj}, pow{iSj}, maxidx(iSj)] = getphasetimecourse(RST, 6,'dpss',2);
+  end
+  phase{iSj} = phase{iSj}(:,triggerpoints{iSj});
+  pow{iSj} = pow{iSj}(:,triggerpoints{iSj});
+end
+
+
+
+%% phase preference for reactivation (top vs bottom percentile)
+for iSj=1:length(is.goodsub)
+  tmp=load([is.AnalysisPath, 'classifiers/TestResting4Cell/', sprintf('prob%d_%d',iSj,is.iRun)]);
+  probAll{iSj} = tmp.prob;
+end
+
+for iSj=1:length(is.goodsub)
+  % take the phase of these points
+  [topphase{iSj}, botphase{iSj}] = get_percentilePhase(probAll{iSj}', phase{iSj}, t_window, is.topPercentile);
+
+  % compare concentration values
+  for iParc = 1:38
+    % [~,fval(iSj, iParc)] = circ_ktest(topphase{iSj}(iParc,:), botphase{iSj}(iParc,:));
+    % compute non-uniformity of the phase data (Rayleigh test)
+    [~,z_top(iSj,iParc)]=circ_rtest(topphase{iSj}(iParc,:));
+    [~,z_bot(iSj,iParc)]=circ_rtest(botphase{iSj}(iParc,:));
+  end
+end
+GA_diff = mean(z_top-z_bot);
+filename = [savebase 'phasepreference_reactivation_', sprintf('%s', FOI)];
+% parc.savenii(GA_diff, filename);
+% osl_render4D([filename, '.nii.gz'], 'visualise', true);
+
+f1=figure('WindowState','maximized');
+plot_phaseConcentration(topphase, botphase, z_top, z_bot, FOI,'reactivation')
+saveas(f1,[filename, '.png'])
+% stat = stat_phasePreference(z_top, z_bot);
+
+%% phase preference for replay (top vs bottom percentile)
+clear z_top z_bot botphase topphase GA_diff
+if whichstudy==1
+  load([wd,'GenericReplayData/STUDYI_ReplayOnset/RwdReplay2ndOnset'],'ToRall');
+  replayScores = ToRall;
+else
+  load([is.AnalysisPath,'classifiers/Sequence_by_Training_4Cell/', 'STUDYII_ReplayOnset'],'ToRall');
+  replayScores = ToRall;
+end
+
+for iSj=1:length(is.goodsub)
+  % take the phase of these points
+  [topphase{iSj}, botphase{iSj}] = get_percentilePhase(replayScores(iSj,:), phase{iSj}, t_window, is.topPercentile);
+
+  for iParc = 1:38
+    % [~,fval(iSj, iParc)] = circ_ktest(topphase{iSj}(iParc,:), botphase{iSj}(iParc,:));
+    % compute non-uniformity of the phase data (Rayleigh test)
+    [~,z_top(iSj,iParc)]=circ_rtest(topphase{iSj}(iParc,:));
+    [~,z_bot(iSj,iParc)]=circ_rtest(botphase{iSj}(iParc,:));
+  end
+end
+GA_diff = mean(z_top-z_bot);
+filename = [savebase 'phasepreference_replay_', sprintf('%s', FOI)];
+% parc.savenii(GA_diff, filename);
+% osl_render4D([filename, '.nii.gz'], 'visualise', true);
+
+f2=figure('WindowState','maximized');
+plot_phaseConcentration(topphase, botphase, z_top, z_bot, FOI,'replay')
+saveas(f2,[filename, '.png'])
+%% Legacy
+%{
     for iC=1:nStim
       % use regression models
       Rreds{iRun}(:,iC) = -(data * gnf{iC}.beta + gnf{iC}.Intercept);   % work on the X*beta space! MVE: the minus is because of a weird matlab definition. Now high positive values mean high probability
     end
-    prob{iRun} = 1./(1+exp(Rreds{iRun}));
+    prob{iRun} = 1./(1+exp(Rreds{iRun})); % the Rreds are the negative of how they usually are defined. That's why we're using +Rreds instead of minus (which is normally in the logsigmoid function)
     
     % find highest percentile probabilities
     x=prob{iRun}; x(isnan(x))=-Inf;
@@ -122,6 +127,8 @@ for iSj = 1%:length(is.goodsub)
     n = round((size(val,1)-sum(isnan(data(:,1))))*perc/100);
     idx_top = idx(1:n,:);
     val_top{iRun} = val(1:n,:);
+
+    
     
     % find lowest percentile probabilities
     [val, idx] = sort(prob{iRun}, 'ascend', 'MissingPlacement', 'last');
@@ -129,8 +136,14 @@ for iSj = 1%:length(is.goodsub)
     idx_bottom = idx(1:n,:);
     val_bottom{iRun} = val(1:n,:);
     
-    % simulate alpha signal --> TODO: replace this by using the alpha
-    % signal of a specific region
+    % Get alpha phase from parcel time courses.
+    S=[];
+    S.outfile = fullfile(dir_temp, 'parcelphase');
+    S.D = RST;
+    RST_copy = spm_eeg_copy(S);
+    [phase, pow, maxidx] = getphasetimecourse(RST_copy);
+    phase = phase(maxidx, :); % take the parcel with maximum power
+    % TODO: Continue here!
     time = 0:1/RST.fsample:(size(data,1)-1)/RST.fsample;
     f=10;
     clear i
@@ -147,12 +160,12 @@ for iSj = 1%:length(is.goodsub)
       % but this doesn't return a test statistic. Other options is to
       % compare the distribution with a uniform distribution using the
       % Kuiper test (circ_kuipertest) or Winson's U2 test.
-      [pval(iRun,k), z(iRun,k)] = circ_rtest(phase_top{iRun}(:,k)); 
-%       [pval(iRun,k), m(iRun,k)] = circ_otest(phase_top{iRun}(:,k));
+      [pval(iRun,k), z(iRun,k)] = circ_rtest(phase_top{iRun}(:,k));
+      %       [pval(iRun,k), m(iRun,k)] = circ_otest(phase_top{iRun}(:,k));
       subplot(2,8,(iRun-1)*8+k);
       rose(phase_top{iRun}(:,k)); hold on
       rose(phase_bottom{iRun}(:,k));
-      if (iRun-1)*8+k == 4 
+      if (iRun-1)*8+k == 4
         title('pre-task Resting State')
       elseif (iRun-1)*8+k == 12
         title('post-task Resting State')
@@ -166,5 +179,4 @@ for iSj = 1%:length(is.goodsub)
   % distributions. See https://uk.mathworks.com/matlabcentral/fileexchange/43543-pierremegevand-watsons_u2
   % or possibly use circ_ktest for equal concentration parameter?
 end
-
-
+%}
