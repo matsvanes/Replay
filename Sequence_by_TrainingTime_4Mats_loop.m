@@ -8,7 +8,7 @@ if whichstudy==1
   MFStartup;
 else
   MFStartup_studyII;
-  load('/Volumes/T5_OHBA/data/replay/StrLearn_MEGexp/BehavData/Exptrial.mat')
+  load('/Users/matsvanes/Data/YunzheData/StrLearn_MEGexp/BehavData/Exptrial.mat')
   is.dirname='StrLearn_MEGexp/';
 end
 if ~isfolder(is.AnalysisPath),   mkdir(is.AnalysisPath), end
@@ -24,7 +24,7 @@ is.ntrlValid=96; % per session
 is.nSes = 3;
 is.nChan = 273;
 is.nTime = 401;
-is.iRun = [2];
+is.iRun = [1 2];
 
 
 sfAll = nan(length(is.lgncy)+1, is.nShuf, length(is.goodsub), 1, length(is.ENL1));
@@ -45,7 +45,7 @@ for iSj=1:length(is.goodsub)
   % compute for pre-task (iRun=1), and post task (iRun=2)
   cnt=1;
   for i=is.iRun
-    Rreds{cnt} = apply_toRest(iSj, is, gnf, GoodChannel, i); 
+    Rreds{iSj,cnt} = apply_toRest(iSj, is, gnf, GoodChannel, i); 
     cnt=cnt+1;
   end
 
