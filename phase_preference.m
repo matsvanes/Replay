@@ -11,15 +11,27 @@ if whichstudy==1
   MFStartup;
 else
   MFStartup_studyII;
-  load('/Volumes/T5_OHBA/data/replay/StrLearn_MEGexp/BehavData/Exptrial.mat')
+  load('/Users/matsvanes/Data/YunzheData/StrLearn_MEGexp/BehavData/Exptrial.mat')
   is.dirname='StrLearn_MEGexp/';
-  savebase = '/Users/matsvanes/Data/YunzheData/PhasePreference/StrLearn_MEGexp/';
+  savebase = '/Users/matsvanes/Data/YunzheData/StrLearn_MEGexp/Analysis/phasePreference/';
 end
 datadir = [is.studydir,'Neuron2020Analysis/Study2/bfnew_1to45hz/'];
 if ~isfolder(is.AnalysisPath),   mkdir(is.AnalysisPath), end
 is.usePrecomputed = true;
 is.iRun = 2;
 is.topPercentile=1;
+is.lambda = 5; % hardcoded best lambda for all subjects
+is.whenInMS = is.tss*is.msPerSample;
+is.TOI = 200; % 200ms post stimulus.
+is.sessionsOfInterest = [1,2,3,4,8]; % rst, lci, lci, lci, rst
+is.nStim = 8;
+is.ntrlAll=120; % per session (includes upside down images)
+is.ntrlValid=96; % per session
+is.nSes = 3;
+is.nChan = 273;
+is.nTime = 401;
+is.iRun = 2;
+is.nPerm = 1000;
 fsample=250;
 t_window=fsample/2;
 parc=parcellation('fmri_d100_parcellation_with_PCC_reduced_2mm_ss5mm_ds8mm.nii.gz');
@@ -28,7 +40,7 @@ FOI = 'alpha'; % can be 'alpha', 'theta'
 %% Get alpha peak frequency
 if strcmp(FOI,'alpha')
   for iSj=1:length(is.goodsub)
-    sprintf('Subject %d', iSj)
+    sprintf('Determining peak frequency | Subject %d', iSj)
     RST = spm_eeg_load([datadir, sprintf('sfold_giles_symmetric_f_session%d', iSj*2)]);
     doplot=0;
     [~, peakfreq(iSj)] = compute_peakfreq(RST, 2:0.1:20, [],[], doplot);
@@ -41,7 +53,7 @@ triggerpoints = triggerpoints(2:2:end); % only need post-task data
 goodsamples = goodsamples(2:2:end);
 
 for iSj=1:length(is.goodsub)
-  sprintf('Subject %d', iSj)
+  sprintf('Get phase time course | Subject %d', iSj)
   RST = spm_eeg_load([datadir, sprintf('sfold_giles_symmetric_f_session%d', iSj*2)]);
 
   % get FOI phase
@@ -56,28 +68,56 @@ end
 
 
 
-%% phase preference for reactivation (top vs bottom percentile)
+%% phase preference for reactivation (compared to shuffled classifier weights (over stimuli))
+% Todo: make this a function
+load([is.rootBehav,  'Exptrial.mat'])
+topphaseAllPerm = cell(length(is.goodsub), max(is.iRun), is.nPerm);
 for iSj=1:length(is.goodsub)
-  tmp=load([is.AnalysisPath, 'classifiers/TestResting4Cell/', sprintf('prob%d_%d',iSj,is.iRun)]);
-  probAll{iSj} = tmp.prob;
-end
+  for iRun=is.iRun
+    is.doPermutation=false;
+    GoodChannel = find_goodChannel(iSj, is);
+    gnf = train_classifier(iSj,is,Exptrial, GoodChannel);
+    tmp = apply_toRest(iSj, is, gnf, GoodChannel, iRun); % get all Rreds
+    RredsAll{iSj,iRun} = tmp{1,37,1,is.lambda};
+    probAll{iSj,iRun} =  1./(1+exp(RredsAll{iSj,iRun}));
 
-for iSj=1:length(is.goodsub)
-  % take the phase of these points
-  [topphase{iSj}, botphase{iSj}] = get_percentilePhase(probAll{iSj}', phase{iSj}, t_window, is.topPercentile);
+    [topphase, ~] = get_percentilePhase(probAll{iSj,iRun}', phase{iSj}, t_window, is.topPercentile);
+    topphaseAll{iSj, iRun} = topphase;
+    for iParc = 1:38
+      % [~,fval(iSj, iParc)] = circ_ktest(topphase{iSj}(iParc,:), botphase{iSj}(iParc,:));
+      % compute non-uniformity of the phase data (Rayleigh test)
+      [~,ZtopPhase(:,iParc)]=circ_rtest(topphase(iParc,:));
+    end
+    ZtopPhaseAll(iSj,:) = ZtopPhase;
 
-  % compare concentration values
-  for iParc = 1:38
-    % [~,fval(iSj, iParc)] = circ_ktest(topphase{iSj}(iParc,:), botphase{iSj}(iParc,:));
-    % compute non-uniformity of the phase data (Rayleigh test)
-    [~,z_top(iSj,iParc)]=circ_rtest(topphase{iSj}(iParc,:));
-    [~,z_bot(iSj,iParc)]=circ_rtest(botphase{iSj}(iParc,:));
+    % do the same for shuffled classifier weights
+    is.doPermutation=true;
+    RredsPerm = zeros(30000,is.nStim,is.nPerm);
+    for iPerm=1:is.nPerm
+      gnfperm=permute_classifierweights(gnf,is);
+      tmp = apply_toRest(iSj, is, gnfperm, GoodChannel, iRun, iPerm); % get all Rreds
+      probPerm = 1./(1+exp(tmp{1,37,1,is.lambda}));
+      [topphasePerm{iPerm}, ~] = get_percentilePhase(probPerm', phase{iSj}, t_window, is.topPercentile);
+      for iParc = 1:38
+        % [~,fval(iSj, iParc)] = circ_ktest(topphase{iSj}(iParc,:), botphase{iSj}(iParc,:));
+        % compute non-uniformity of the phase data (Rayleigh test)
+        [~,ZtopPhasePerm(iParc,iPerm)]=circ_rtest(topphasePerm{iPerm}(iParc,:));
+      end
+    end
+    ZtopPhasePermAll(iSj,:,:) = ZtopPhasePerm;  
+    fname = [is.AnalysisPath, 'phasePreference/', sprintf('phasePrefReactivation%d_%d', iSj, iRun)];
+    save(fname, 'topphase', 'ZtopPhase', 'topphasePerm', 'ZtopPhasePerm')
   end
 end
-GA_diff = mean(z_top-z_bot);
+
+GA_mean = mean(ZtopPhaseAll);
+
+% do a statistical test | TODO: is this valid?
+p_val = sum(ZtopPhasePermAll>ZtopPhaseAll,3)/is.nPerm; % first level t test
+figure
 filename = [savebase 'phasepreference_reactivation_', sprintf('%s', FOI)];
-% parc.savenii(GA_diff, filename);
-% osl_render4D([filename, '.nii.gz'], 'visualise', true);
+parc.savenii(GA_mean, filename);
+osl_render4D([filename, '.nii.gz'], 'visualise', true);
 
 f1=figure('WindowState','maximized');
 plot_phaseConcentration(topphase, botphase, z_top, z_bot, FOI,'reactivation')
