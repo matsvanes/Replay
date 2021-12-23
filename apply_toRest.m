@@ -1,15 +1,30 @@
-function Rreds = apply_toRest(iSj, is, gnf, GoodChannel, iRun)
+function Rreds = apply_toRest(iSj, is, gnf, GoodChannel, iRun, iPerm)
 %% Apply classifiers to resting state data
+if ~isfield(is, 'doPermutation')
+  is.doPermutation=false;
+end
+if ~isfield(is, 'doSave')
+  is.doSave=true;
+end
 if is.usePrecomputed
-  fprintf('Loading results - classifier applied to resting state data \n')
+  if ~is.doPermutation || iPerm==1
+    fprintf('Loading results - classifier applied to resting state data \n')
+  end
   % load classifier
   try
-    Rreds = load([is.AnalysisPath,'classifiers/TestResting4Cell/', 'Rreds' num2str(iSj),'_', sprintf('%d',iRun)], 'Rreds') ; % get the gnf variable with the regression models
+    if is.doPermutation==false
+      fname = [is.AnalysisPath,'classifiers/TestResting4Cell/', 'Rreds' num2str(iSj),'_', sprintf('%d',iRun)]; 
+    else
+      fname = [is.AnalysisPath,'classifiers/TestResting4Cell/perm/', 'Rreds' num2str(iSj),'_', sprintf('%d',iRun), '_', sprintf('perm%d', iPerm)]; % get the gnf variable with the regression models
+    end
+    Rreds = load(fname, 'Rreds');% get the gnf variable with the regression models
     Rreds =Rreds.Rreds;
   catch
-    fprintf('Loading in data was not possible - recomputing now \n')
+    if ~is.doPermutation || iPerm==1
+      fprintf('Loading in data was not possible - recomputing now \n')
+    end
     is.usePrecomputed=false;
-    Rreds = apply_toRest(iSj, is, gnf, GoodChannel, iRun);
+    Rreds = apply_toRest(iSj, is, gnf, GoodChannel, iRun, iPerm);
   end
 else
   %%%%%%%%% this second for loop iterates through subjects applying the
@@ -18,8 +33,20 @@ else
   %%%%%%%%% structure called Rreds:
   % iRun specifies which resting state session (1=pre, 2=post)
 
-  mkdir([is.AnalysisPath,'classifiers/TestResting4Cell/',is.dirname]);
-  saveWrap = @(Rreds, is, iSj, iRun) save([is.AnalysisPath,'classifiers/TestResting4Cell/','Rreds' num2str(iSj) '_' num2str(iRun)], 'Rreds', 'is', '-v7.3');
+  folder=[is.AnalysisPath,'classifiers/TestResting4Cell/'];
+  if is.doPermutation
+    folder = [folder, 'perm/'];
+  end
+  if ~exist(folder, 'dir')
+    mkdir(folder);
+  end
+  fname =  [folder,'Rreds' num2str(iSj) '_' num2str(iRun)];
+  if is.doPermutation
+    fname = [fname, '_', sprintf('perm%d', iPerm)];
+  end
+  if is.doSave
+    saveWrap = @(Rreds, is, iSj, iRun) save(fname, 'Rreds', 'is', '-v7.3');
+  end
   iSjGood=is.goodsub(iSj);
 
   % Load Resting State Data
@@ -91,7 +118,14 @@ else
       end
     end
   end
-  saveWrap(Rreds, is, iSj, iRun);
-  Rreds = squeeze(Rreds(:,37,1,:));
-  disp(['sj' num2str(iSj) ' finished']);
+  if is.doPermutation
+    Rreds(1,37,1,setdiff(1:10, is.lambda))=cell(1,9);
+    Rreds{1,37,1,is.lambda} = single(Rreds{1,37,1,is.lambda});
+  end
+  if is.doSave
+    saveWrap(Rreds, is, iSj, iRun);
+  end
+  if ~is.doPermutation || iPerm==is.nPerm
+    disp(['sj' num2str(iSj) ' finished']);
+  end
 end
