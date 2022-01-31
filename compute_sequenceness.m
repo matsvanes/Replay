@@ -1,16 +1,20 @@
-function [sf2, sb2] = compute_sequenceness(iSj, is, iRun)
+function [sf2, sb2] = compute_sequenceness(iSj, is, iRun, iPerm)
 %% Compute sequenceness on resting state activations
 if is.usePrecomputed
   fprintf('Loading results - sequenceness \n')
   % load sequenceness and select for specific subject
   try
-    s = load([is.AnalysisPath,'classifiers/Sequence_by_Training_4Cell/StimAll']);
+    if exist('iPerm','var') && ~isempty(iPerm)
+      s = load([is.AnalysisPath,'classifiers/Sequence_by_Training_4Cell/perm/', sprintf('Stim%d_%d_perm',iSj,iRun)]);
+    else
+      s = load([is.AnalysisPath,'classifiers/Sequence_by_Training_4Cell/StimAll']);
+    end
     sf2 = squeeze(s.sfAll(:,:,iSj,:,:));
     sb2 = squeeze(s.sbAll(:,:,iSj,:,:));
   catch
     fprintf('Loading in data was not possible - recomputing now \n')
     is.usePrecomputed=false;
-    [sf2, sb2] = compute_sequenceness(iSj, is, iRun);
+    [sf2, sb2] = compute_sequenceness(iSj, is, iRun, iPerm);
   end
 else
 
@@ -28,8 +32,11 @@ else
 
   sf = cell(is.nShuf, 1);
   sb = cell(is.nShuf, 1);
-
-  S = load([is.AnalysisPath,'classifiers/TestResting4Cell/','Rreds' num2str(iSj) '_' num2str(iRun)]); Rreds = S.Rreds;  % load this subject's preds
+  if exist('iPerm','var') && ~isempty(iPerm)
+    S = load([is.AnalysisPath,'classifiers/TestResting4Cell/perm/','Rreds' num2str(iSj), '_', num2str(iRun), '_perm', num2str(iPerm)]); Rreds = S.Rreds;  % load this subject's preds
+  else
+    S = load([is.AnalysisPath,'classifiers/TestResting4Cell/','Rreds' num2str(iSj) '_' num2str(iRun)]); Rreds = S.Rreds;  % load this subject's preds
+  end
 
   nTr = size(Rreds,3);
   L1l = length(is.ENL1);
@@ -113,10 +120,14 @@ else
     end
 
     for iShuf=1:is.nShuf
-      sf{iShuf,iTr} = nan(1, 1, length(is.lgncy)+1, L1l);
-      sb{iShuf,iTr} = nan(1, 1, length(is.lgncy)+1, L1l);
-
-      sf{iShuf,iTr}(1, 1, 2:end, :, :)=squeeze(sf_temp(:,iShuf,:));
+      if is.doPermutation % we have only done permutations for a specific lambda, instead of all 10 lambdas
+        sf{iShuf,iTr} = nan(1, 1, length(is.lgncy)+1);
+        sb{iShuf,iTr} = nan(1, 1, length(is.lgncy)+1);
+      else
+        sf{iShuf,iTr} = nan(1, 1, length(is.lgncy)+1, L1l);
+        sb{iShuf,iTr} = nan(1, 1, length(is.lgncy)+1, L1l);
+      end
+      sf{iShuf,iTr}(1, 1, 2:end, :, :)=squeeze(sf_temp(:,iShuf,:));%TODO: FIX THIS!!
       sb{iShuf,iTr}(1, 1, 2:end, :, :)=squeeze(sb_temp(:,iShuf,:));
     end
   end
@@ -124,9 +135,6 @@ else
   % RESHAPE
   sf2 = permute(cell2mat(sf), [3 1 2 4]); % sf2 = latency(61) * shuffles(24) * trials (1) * alpha (L1 regulation = 10)
   sb2 = permute(cell2mat(sb), [3 1 2 4]);
-
-  sfAll(:,:,iSj,:,:) = sf2;
-  sbAll(:,:,iSj,:,:) = sb2;
 
   disp(['Sub' num2str(iSj) ' Sequence Finished' ])
   toc
