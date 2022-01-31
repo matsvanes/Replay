@@ -22,11 +22,13 @@ Mreplay=squeeze(nanmean(sfbCV(:,:,1),1));
 Sreplay=squeeze(nanstd(sfbCV(:,:,1),[],1))/sqrt(size(sfbCV(:,:,1),12));
 tTimes2=0:10:600;
 
-set(gcf,'units','points','position',[x0,y0,width,height])
-plot(tTimes2, Mreplay, 'LineWidth', 1.5)
-xlabel('lag (ms)')
-ylabel('L1-reverse/Leftarrow sequenceness /RightarrowL1-forward'),
-title({'Sequenceness, Study II Lasso,',[' criteria maximised across all timepoints']});
-npThreshAll = max(max(abs(nanmean(sfbCV(:,:,2:end),1))));hold on;
-plot([tTimes2(1) tTimes2(end)], -npThreshAll*[1 1], 'k--'), plot([tTimes2(1) tTimes2(end)], npThreshAll*[1 1], 'k--')
-grid on;
+if is.plot
+  set(gcf,'units','points','position',[x0,y0,width,height])
+  plot(tTimes2, Mreplay, 'LineWidth', 1.5)
+  xlabel('lag (ms)')
+  ylabel('L1-reverse/Leftarrow sequenceness /RightarrowL1-forward'),
+  title({'Sequenceness, Study II Lasso,',[' criteria maximised across all timepoints']});
+  npThreshAll = max(max(abs(nanmean(sfbCV(:,:,2:end),1))));hold on;
+  plot([tTimes2(1) tTimes2(end)], -npThreshAll*[1 1], 'k--'), plot([tTimes2(1) tTimes2(end)], npThreshAll*[1 1], 'k--')
+  grid on;
+end
