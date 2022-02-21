@@ -1,10 +1,16 @@
-function [topphase, botphase] = get_percentilePhase(prob, phase, t_window, percentile)
+function [topphase, botphase] = get_percentilePhase(prob, phase, t_window, percentile, mask)
+
+if nargin<5, mask=[]; end
 
 % get top percentile probabilities
 topperc = prob > prctile(prob(:),100-percentile);
 topperc = [zeros(size(topperc,1),1),diff(topperc,[],2)]==1;% eliminate adjacent points
 topperc(:,1:t_window)=0;topperc(:,end-t_window:end)=0;% eliminate border points:
 topidx = upsample_replayTimes(topperc, phase, t_window);
+
+if ~isempty(mask)
+  topidx = topidx(ismember(topidx, find(mask)));
+end
 
 if nargout>1
   % get bottom percentile probabilities
@@ -24,4 +30,4 @@ if nargout>1
   % take the phase of these points
   botphase = phase(:,botidx);
 end
-topphase = phase(:,topidx);
+topphase = phase(:,:,topidx);
