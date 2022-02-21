@@ -14,7 +14,7 @@ cfg.taper = taper;
 cfg.foi = freq;
 if strcmp(taper, 'dpss')
   cfg.tapsmofrq = smoothing;
-  cfg.t_ftimwin = 1/smoothing;
+  cfg.t_ftimwin = repmat(1/smoothing, [1, length(cfg.foi)]);
 else
   cfg.t_ftimwin = numcycles*1./cfg.foi;
 end
@@ -23,8 +23,12 @@ cfg.output = 'fourier';
 cfg.toi = 0:1./D.fsample:d.time{1}(end);
 freq = ft_freqanalysis(cfg, d);
 
-pow = abs(squeeze(freq.fourierspctrm)).^2;
-[~, maxidx] = max(nanmean(pow,2));
+pow = nanmean(abs(freq.fourierspctrm).^2,4);
+for ifoi=1:length(freq.freq)
+  [~, maxidx(1,ifoi)] = max(squeeze(pow(:,:,ifoi,:)));
+end
+pow=squeeze(pow);
+
 phase = angle(squeeze(freq.fourierspctrm))+pi;
 end
 
