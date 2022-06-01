@@ -6,16 +6,21 @@ end
 if ~isfield(is, 'doSave')
   is.doSave=true;
 end
+if iRun==2 && ~is.doPermutation
+  usepath = [is.AnalysisPath, 'classifiers/TestResting4Cell/']; % original results from Yunzhe
+else
+  usepath = [is.matsdir, 'classifiers/TestResting/'];
+end
 if is.usePrecomputed
   if ~is.doPermutation || iPerm==1
-    fprintf('Loading results - classifier applied to resting state data \n')
+%     fprintf('Loading results - classifier applied to resting state data \n')
   end
   % load classifier
   try
     if is.doPermutation==false
-      fname = [is.AnalysisPath,'classifiers/TestResting4Cell/', 'Rreds' num2str(iSj),'_', sprintf('%d',iRun)]; 
+      fname = [usepath, 'Rreds' num2str(iSj),'_', sprintf('%d',iRun)]; 
     else
-      fname = [is.AnalysisPath,'classifiers/TestResting4Cell/perm/', 'Rreds' num2str(iSj),'_', sprintf('%d',iRun), '_', sprintf('perm%d', iPerm)]; % get the gnf variable with the regression models
+      fname = [usepath, 'perm/', 'Rreds' num2str(iSj),'_', sprintf('%d',iRun), '_', sprintf('perm%d', iPerm)]; % get the gnf variable with the regression models
     end
     Rreds = load(fname, 'Rreds');% get the gnf variable with the regression models
     Rreds =Rreds.Rreds;
@@ -33,7 +38,7 @@ else
   %%%%%%%%% structure called Rreds:
   % iRun specifies which resting state session (1=pre, 2=post)
 
-  folder=[is.AnalysisPath,'classifiers/TestResting4Cell/'];
+  folder=usepath;
   if is.doPermutation
     folder = [folder, 'perm/'];
   end

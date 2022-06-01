@@ -3,6 +3,12 @@ function ToRall = compute_replayTimecourse(is,iLCV,Mreplay,iRun, iPerm)
 
 %define peak sequenceness time:
 [~,lag] = max(abs(Mreplay));
+if iRun==2 && ~is.doPermutation
+  usepath = [is.AnalysisPath, 'classifiers/TestResting4Cell/']; % original results from Yunzhe
+else
+  usepath = [is.matsdir, 'classifiers/TestResting/'];
+end
+
 for iSj=1:length(is.goodsub)
   % take that subject's CV parameter selection:
   iL = 5;% hard coded because this is used in the past. No crossvalidation!! %iLCV(iSj);
@@ -11,7 +17,7 @@ for iSj=1:length(is.goodsub)
   if is.doPermutation==true
     S.Rreds = apply_toRest(iSj, is, [], [], iRun, iPerm);
   else
-    S = load([is.AnalysisPath,'classifiers/TestResting4Cell/','Rreds' num2str(iSj) '_' num2str(iRun)]); Rreds = S.Rreds;  % load this subject's preds
+    S = load([usepath,'Rreds' num2str(iSj) '_' num2str(iRun)]); Rreds = S.Rreds;  % load this subject's preds
   end
 
   reactivationtimecourse = S.Rreds{1,37,1,iL}; % 37 is 200 ms
@@ -30,7 +36,7 @@ for iSj=1:length(is.goodsub)
   ToRall(iSj,:) = ToR;
 end
 if ~is.doPermutation
-  replaydir = [is.AnalysisPath,'classifiers/Sequence_by_Training_4Cell/'];
+  replaydir = [usepath,'classifiers/Sequence_by_Training_4Cell/'];
   mkdir(replaydir)
   if iRun==1
     fname = 'STUDYII_PreplayOnset.mat';
