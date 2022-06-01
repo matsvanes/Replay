@@ -16,7 +16,7 @@ else
   MFStartup_studyII;
   load('/Users/matsvanes/Data/YunzheData/StrLearn_MEGexp/BehavData/Exptrial.mat')
   is.dirname='StrLearn_MEGexp/';
-  savebase = '/Users/matsvanes/Data/YunzheData/StrLearn_MEGexp/Analysis/phasePreference/';
+  is.matsdir = '/Users/matsvanes/Data/YunzheData/Mats/Study2/';
 end
 datadir = [is.studydir,'Neuron2020Analysis/Study2/bfnew_1to45hz/'];
 if ~isfolder(is.AnalysisPath),   mkdir(is.AnalysisPath), end
@@ -37,10 +37,19 @@ is.iRun = 2;
 is.nPerm = 1000;
 is.K = 12;
 fsample=250;
+is.plot=false;
 is.t_window=fsample/2;
 is.useMask = 1; % to use a state-mask on the phases 
 parc=parcellation('fmri_d100_parcellation_with_PCC_reduced_2mm_ss5mm_ds8mm.nii.gz');
-FOI = repmat(1:1:30, length(is.goodsub), 1); % can be 'alpha'
+FOI = repmat(1:1:30, length(is.goodsub), 1); % can be 'alpha', 'emd'
+if ischar(FOI)
+  substring=['_', FOI];
+else
+  substring='';
+end
+
+% get neighbourhood structure
+load('Giles39_neighbours.mat')
 
 
 %% Load HMM and get masks for RSN states 1 and 2
@@ -116,14 +125,22 @@ goodsamples = goodsamples(2:2:end);
 
 for iSj=1:length(is.goodsub)
   sprintf('Get phase time course | Subject %d', iSj)
-  RST = spm_eeg_load([datadir, sprintf('sfold_giles_symmetric_f_session%d', iSj*2)]);
-  % get FOI phase
-  if exist('peakfreq', 'var') && numel(FOI)==numel(is.goodsub)
-    [phase{iSj}, ~, maxidx(iSj,:)] = getphasetimecourse(RST, peakfreq(iSj));
+
+  if isstr(FOI) && strcmp(FOI, 'emd')
+    tmp=load([is.matsdir, sprintf('phase/emd_session%d', iSj*2)]);
+    IF(iSj, :, :) = squeeze(mean(tmp.IF(:,triggerpoints{iSj},:),2));   
+    phase{iSj} = permute(tmp.IP(:, triggerpoints{iSj},:), [1,3,2]);
   else
-    [phase{iSj}, ~, maxidx(iSj,:)] =  getphasetimecourse(RST, FOI(iSj,:)); % getphasetimecourse(RST, FOI(iSj,:),'dpss',2);
+    RST = spm_eeg_load([datadir, sprintf('sfold_giles_symmetric_f_session%d', iSj*2)]);
+    % get FOI phase
+    if exist('peakfreq', 'var') && numel(FOI)==numel(is.goodsub)
+      [phase{iSj}, ~, maxidx(iSj,:), tmp] = getphasetimecourse(RST, peakfreq(iSj));
+    else
+      [phase{iSj}, ~, maxidx(iSj,:), tmp] =  getphasetimecourse(RST, FOI(iSj,:)); % getphasetimecourse(RST, FOI(iSj,:),'dpss',2);
+    end
+    spctrm{iSj} = squeeze(tmp.fourierspctrm(:,:,:,triggerpoints{iSj}));
+    phase{iSj} = phase{iSj}(:,:,triggerpoints{iSj});
   end
-  phase{iSj} = phase{iSj}(:,:,triggerpoints{iSj});
 end
 
 %% phase preference for reactivation (compared to shuffled classifier weights (over stimuli))
@@ -133,19 +150,19 @@ for iSj = 1:length(is.goodsub)
   is.doPermutation=false;
   GoodChannel = find_goodChannel(iSj, is); % get good channels
   gnf = train_classifier(iSj,is,Exptrial, GoodChannel); % get decoding models
-  iRun=2;
-  Rreds = apply_toRest(iSj, is, gnf, GoodChannel, iRun); % get all resting state decoding results
+  Rreds = apply_toRest(iSj, is, gnf, GoodChannel, is.iRun); % get all resting state decoding results
   RredsAll{iSj} = Rreds{1,37,1,is.lambda}; % select the decoding results of the correct model
   probAll{iSj} =  1./(1+exp(RredsAll{iSj})); % transform decoding results to probabilities
   % compute phase non-uniformity of the top percentile probabilities
-  fname = [is.AnalysisPath, 'phasePreference/', sprintf('phasePrefReactivation%d_%d', iSj, iRun)];
+  fname = [is.matsdir, 'phasePreference/', sprintf('phasePrefReactivation%d_%d', iSj, is.iRun), substring];
   if is.useMask 
     fname = [fname, sprintf('_mask_%dk', is.useMask)];
-    mask = vpath(iSj,:)==is.useMask;
+    temporalMask = vpath(iSj,:)==is.useMask;
+    is.topPercentile=5;
   else
-    mask=[];
+    temporalMask=[];
   end
-  [topphase{iSj}, ZtopPhase(iSj,:,:)] = phase_nonuniformity(probAll{iSj}, phase{iSj}, is, fname, mask);
+  [topphase{iSj}, ZtopPhase(iSj,:,:)] = phase_nonuniformity(probAll{iSj}, phase{iSj}, is, fname, temporalMask);
 
 
   % do the same for permutations, where channel weights from the decoding
@@ -158,11 +175,15 @@ for iSj = 1:length(is.goodsub)
   else
     for iPerm=1:is.nPerm
       gnfperm=permute_classifierweights(gnf,is);
-      Rreds = apply_toRest(iSj, is, gnfperm, GoodChannel, iRun, iPerm); % get all Rreds
+      Rreds = apply_toRest(iSj, is, gnfperm, GoodChannel, is.iRun, iPerm); % get all Rreds
       probPerm = 1./(1+exp(Rreds{1,37,1,is.lambda}));
-      [~, ZtopPhasePerm(:,:,iPerm)] = phase_nonuniformity(probPerm, phase{iSj}, is, [], mask);
+      [~, ZtopPhasePerm(:,:,iPerm)] = phase_nonuniformity(probPerm, phase{iSj}, is, [], temporalMask);
     end
-    foi=FOI(iSj,:);
+    if ischar(FOI)
+      foi=squeeze(IF(iSj,:,:));
+    else
+      foi=FOI(iSj,:);
+    end
     save(fname, 'ZtopPhasePerm', 'foi')
     ZtopPhasePermAll(iSj,:,:,:) = ZtopPhasePerm;
   end
@@ -177,83 +198,127 @@ GA_phasepref_reactivation = squeeze(mean(phasepref_reactivation));
 % Do signflipping test on the group level
 dat=[];
 dat.label=parc.labels;
-dat.freq=FOI(1,:);
+if ischar(FOI)
+  dat.freq = squeeze(mean(mean(IF)));
+else
+  dat.freq=FOI(1,:);
+end
 dat.dimord = 'rpt_chan_freq';
 dat.z = ZtopPhase;
 
 datperm=dat;
 datperm.z = ZtopPhasePerm;
 
+dat=[];
+dat.label=parc.labels;
+dat.time = is.t;
+if ischar(FOI)
+  dat.freq = squeeze(mean(mean(IF)));
+else
+  dat.freq=FOI(1,:);
+end
+dat.dimord = 'rpt_chan_freq_time';
+dat.z = itpc; % itpc./itpcPerm_std
+
+datperm=dat;
+datperm.z = itpcPerm_u; % ZtopPhasePerm./std(ZtopPhasePermAll,[],4)
+
+if is.useMask
+  spatialMask = get_spatialHMMmask;
+  spatialMask = spatialMask(:,is.useMask);
+  dat.z(:,isnan(spatialMask),:,:) = NaN;
+  datperm.z(:,isnan(spatialMask),:,:) = NaN;
+  nparc_correct = nansum(spatialMask);
+else
+  nparc_correct = 38;
+  spatialMask = ones(38,1);
+end
+
 Nsub=length(is.goodsub);
 cfgs=[];
+cfgs.channel = dat.label(spatialMask==1);
 cfgs.method = 'montecarlo';
 cfgs.statistic = 'depsamplesT';
 cfgs.design(1,1:2*Nsub)  = [ones(1,Nsub) 2*ones(1,Nsub)];
 cfgs.design(2,1:2*Nsub)  = [1:Nsub 1:Nsub];
 cfgs.tail = 1;
-% cfgs.correctm = 'cluster';%'bonferroni';
+cfgs.correctm = 'cluster';
 cfgs.clustertail = 1;
 cfgs.neighbours = [];
 cfgs.ivar = 1;
 cfgs.uvar = 2;
-cfgs.numrandomization=10000;
+cfgs.numrandomization=1000;
 cfgs.parameter='z';
+cfgs.alpha=0.05/nparc_correct;
+cfgs.clusteralpha = 0.05;
+osl_shutdown()
+addpath(('/Volumes/T5_OHBA/software/fieldtrip'))
+ft_defaults
 stat=ft_freqstatistics(cfgs,dat,datperm);
-stat.avg = GA_phasepref_replay;
-stat.weighted_avg = squeeze(mean(WGA_phasepref_replay));
+restoredefaultpath
+startup
+stat.avg = GA_phasepref_reactivation;
+stat.weighted_avg = squeeze(mean(WGA_phasepref_reactivation));
 
-filename = [savebase 'phasepreference_reactivation'];
+filename = [is.matsdir, 'phasePreference/', 'phasepreference_reactivation', substring];
 if is.useMask, filename = [filename, sprintf('_mask_%dk', is.useMask)]; end
 save(filename, 'stat', 'cfgs', 'phasepref_reactivation', 'WGA_phasepref_reactivation')
 
 % Visualize mean difference
-filename = [savebase 'phasepreference_reactivation_GA'];
+filename = [is.matsdir 'phasePreference/', 'phasepreference_reactivation', substring, '_GA'];
 if is.useMask, filename = [filename, sprintf('_mask_%dk', is.useMask)]; end
 parc.savenii(GA_phasepref_reactivation, filename);
 plot_surface_movie(parc, stat, 'avg', [], false)
 
-filename = [savebase 'phasepreference_reactivation_WGA'];
+filename = [is.matsdir 'phasePreference/', 'phasepreference_reactivation', substring, '_WGA'];
 if is.useMask, filename = [filename, sprintf('_mask_%dk', is.useMask)]; end
 parc.savenii(WGA_phasepref_reactivation, filename);
 plot_surface_movie(parc, stat, 'weighted_avg', [], false)
 
-filename = [savebase 'phasepreference_reactivation_tstat'];
+filename = [is.matsdir 'phasePreference/', 'phasepreference_reactivation', substring, '_tstat'];
 if is.useMask, filename = [filename, sprintf('_mask_%dk', is.useMask)]; end
 parc.savenii(stat.stat, filename);
 plot_surface_movie(parc, stat, 'stat', [], false)
 
 %% phase preference for replay (top vs permutation)
 % Do the same as above, but now for replay
-
+is.doPermutation=false;
 % observed data
 if whichstudy==1
   tmp=load([wd,'GenericReplayData/STUDYI_ReplayOnset/RwdReplay2ndOnset'],'ToRall');
   replayScores = tmp.ToRall;
 else
-  tmp=load([is.AnalysisPath,'classifiers/Sequence_by_Training_4Cell/', 'STUDYII_ReplayOnset'],'ToRall');
-  replayScores = tmp.ToRall;
+  StimAll = load([is.AnalysisPath, 'classifiers/Sequence_by_Training_4Cell/StimAll.mat']);
+  sfAll = StimAll.sfAll;
+  sbAll = StimAll.sbAll;
+  [~, ~, Mreplay, ~] = find_bestLambda(is, sfAll, sbAll);
+  ToRall = compute_replayTimecourse(is, [], Mreplay, is.iRun);
+  replayScores = ToRall;
 end
 
 replayScoresPerm = zeros(22,30000,is.nPerm);
 for iSj=1:length(is.goodsub)
-  is.doPermutation=false;
   % compute phase non-uniformity of the top percentile Replay scores
-  fname = [is.AnalysisPath, 'phasePreference/', sprintf('phasePrefReplay%d_%d', iSj, iRun)];
+  fname = [is.matsdir, 'phasePreference/', sprintf('phasePrefReplay%d_%d', iSj, is.iRun), substring];
   if is.useMask
     fname = [fname, sprintf('_mask_%dk', is.useMask)];
-    mask = vpath(iSj,:)==is.useMask;
+    temporalMask = vpath(iSj,:)==is.useMask;
+    is.topPercentile=5;
   else
-    mask=[];
+    is.topPercentile=1;
+    temporalMask=[];
   end
-  [topphase{iSj}, ZtopPhase(iSj,:,:)] = phase_nonuniformity(replayScores(iSj,:)', phase{iSj}, is, fname, mask);
+   [~, topidx{iSj}] = get_percentilePhase(replayScores(iSj,:), phase{iSj}, is.t_window, is.topPercentile, temporalMask);
+  [topphase{iSj}, ZtopPhase(iSj,:,:)] = phase_nonuniformity(replayScores(iSj,:)', phase{iSj}, is, fname, temporalMask);
 end
 
 % do the same for permutations, where channel weights from the decoding
 % model are permuted over stimuli
 is.doPermutation=true;
+clear ZtopPhasePerm
 try
   for iSj=1:length(is.goodsub)
-    fname = [is.AnalysisPath, 'phasePreference/', sprintf('phasePrefReplay%d_%d', iSj, iRun)];
+    fname = [is.matsdir, 'phasePreference/', sprintf('phasePrefReplay%d_%d', iSj, is.iRun), substring];
     if is.useMask, fname = [fname, sprintf('_mask_%dk', is.useMask)]; end
     fname = [fname, '_perm'];
     tmp=load(fname);
@@ -263,26 +328,31 @@ catch
   % We need to use the lag that is used in the observed statistic. In
   % order to find it, we use Mreplay (group mean replay) to feed into
   % compute_sequenceness
+  is.plot=false;
   StimAll = load([is.AnalysisPath, 'classifiers/Sequence_by_Training_4Cell/StimAll.mat']);
   sfAll = StimAll.sfAll;
   sbAll = StimAll.sbAll;
   [~, ~, Mreplay, ~] = find_bestLambda(is, sfAll, sbAll);
-  is.plot=false;
+
   for iPerm=1:is.nPerm
     % The permuted Rreds should already have been computed, so no need to
     % do the stuff that comes before. This is done for all subjects at once
     % though, and we want to save the permutation statistic per subject -
     % so that's why we use a seperate loop.
-    replayScoresPerm(:,:,iPerm) = compute_replayTimecourse(is,[],Mreplay,iRun,iPerm);
+    replayScoresPerm(:,:,iPerm) = compute_replayTimecourse(is,[],Mreplay,is.iRun,iPerm);
   end
   for iSj=1:length(is.goodsub)
     for iPerm=1:is.nPerm
-      [~, ZtopPhasePerm(:,:,iPerm)] = phase_nonuniformity(squeeze(replayScoresPerm(iSj,:,iPerm))', phase{iSj}, is, [], mask);
+      [~, ZtopPhasePerm(:,:,iPerm)] = phase_nonuniformity(squeeze(replayScoresPerm(iSj,:,iPerm))', phase{iSj}, is, [], temporalMask);
     end
-    fname = [is.AnalysisPath, 'phasePreference/', sprintf('phasePrefReplay%d_%d', iSj, iRun)];
+    fname = [is.matsdir, 'phasePreference/', sprintf('phasePrefReplay%d_%d', iSj, is.iRun), substring];
     if is.useMask, fname = [fname, sprintf('_mask_%dk', is.useMask)]; end
     fname = [fname, '_perm'];
-    foi=FOI(iSj,:);
+    if ischar(FOI)
+      foi=squeeze(IF(iSj,:,:));
+    else
+      foi=FOI(iSj,:);
+    end
     ZtopPhasePermAll(iSj,:,:,:) = ZtopPhasePerm;
     save(fname, 'ZtopPhasePerm', 'foi')
   end
@@ -297,43 +367,70 @@ GA_phasepref_replay = squeeze(mean(phasepref_replay));
 % Do signflipping test on the group level
 dat=[];
 dat.label=parc.labels;
-dat.freq=FOI(1,:);
+if ischar(FOI)
+  dat.freq = squeeze(mean(mean(IF)));
+else
+  dat.freq=FOI(1,:);
+end
 dat.dimord = 'rpt_chan_freq';
-dat.z = ZtopPhase;
+dat.z = ZtopPhase; % ZtopPhase./std(ZtopPhasePermAll,[],4)
 
 datperm=dat;
-datperm.z = ZtopPhasePerm;
+datperm.z = ZtopPhasePerm; % ZtopPhasePerm./std(ZtopPhasePermAll,[],4)
+
+if is.useMask
+  spatialMask = get_spatialHMMmask;
+  spatialMask = spatialMask(:,is.useMask);
+  dat.z(:,isnan(spatialMask),:,:) = NaN;
+  datperm.z(:,isnan(spatialMask),:,:) = NaN;
+  nparc_correct = nansum(spatialMask);
+else
+  nparc_correct = 38;
+  spatialMask = ones(38,1);
+end
 
 Nsub=length(is.goodsub);
 cfgs=[];
+cfgs.channel = dat.label(spatialMask==1);
 cfgs.method = 'montecarlo';
 cfgs.statistic = 'depsamplesT';
 cfgs.design(1,1:2*Nsub)  = [ones(1,Nsub) 2*ones(1,Nsub)];
 cfgs.design(2,1:2*Nsub)  = [1:Nsub 1:Nsub];
 cfgs.tail = 1;
-% cfgs.correctm = 'cluster';%'bonferroni';
+cfgs.correctm = 'cluster';
 cfgs.clustertail = 1;
 cfgs.neighbours = [];
 cfgs.ivar = 1;
 cfgs.uvar = 2;
-cfgs.numrandomization=10000;
+cfgs.numrandomization=1000;
 cfgs.parameter='z';
+cfgs.alpha=0.05/nparc_correct;
+cfgs.clusteralpha = 0.05;
+osl_shutdown()
+addpath(('/Volumes/T5_OHBA/software/fieldtrip'))
+ft_defaults
 stat=ft_freqstatistics(cfgs,dat,datperm);
+restoredefaultpath
+startup
 stat.avg = GA_phasepref_replay;
 stat.weighted_avg = squeeze(mean(WGA_phasepref_replay));
 
-filename = [savebase 'phasepreference_replay'];
+filename = [is.matsdir 'phasePreference/', 'phasepreference_replay', substring];
+if is.useMask, filename = [filename, sprintf('_mask_%dk', is.useMask)]; end
 save(filename, 'stat', 'cfgs', 'phasepref_replay')
 
 % Visualize mean difference
-filename = [savebase 'phasepreference_replay_GA'];
+filename = [is.matsdir 'phasePreference/', 'phasepreference_replay', substring, '_GA'];
+if is.useMask, filename = [filename, sprintf('_mask_%dk', is.useMask)]; end
 parc.savenii(GA_phasepref_replay, filename);
 plot_surface_movie(parc, stat, 'avg', [], false)
 
-filename = [savebase 'phasepreference_replay_WGA'];
+filename = [is.matsdir 'phasePreference/', 'phasepreference_replay', substring, '_WGA'];
+if is.useMask, filename = [filename, sprintf('_mask_%dk', is.useMask)]; end
 parc.savenii(WGA_phasepref_replay, filename);
 plot_surface_movie(parc, stat, 'weighted_avg', [], false)
 
-filename = [savebase 'phasepreference_replay_tstat'];
+filename = [is.matsdir 'phasePreference/', 'phasepreference_replay', substring, '_tstat'];
+if is.useMask, filename = [filename, sprintf('_mask_%dk', is.useMask)]; end
 parc.savenii(stat.stat, filename);
 plot_surface_movie(parc, stat, 'stat', [], false)
