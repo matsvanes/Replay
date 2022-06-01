@@ -1,4 +1,4 @@
-function [phase, pow, maxidx] = getphasetimecourse(D, freq, taper, smoothing)
+function [phase, pow, maxidx, freq] = getphasetimecourse(D, freq, taper, smoothing)
 
 if ~exist('freq','var'), freq=10; end
 if ~exist('taper','var'), taper='hanning'; end
