@@ -5,7 +5,7 @@ function [iLCV, sfbCV, Mreplay, Sreplay] = find_bestLambda(is, sfAll, sbAll)
 % the group without the subject of interest.
 shuf1=1;
 nsub=length(is.goodsub);
-figure,
+if is.plot,figure, end
 x0=40;
 y0=40;
 width=700;
