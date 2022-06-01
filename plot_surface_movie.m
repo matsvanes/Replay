@@ -20,7 +20,8 @@ function hfig = plot_surface_movie(p,sourcedata,parameter,surface_inflation,sing
     %
     % The buttons on the top of the figure let you manually cycle through
     % volumes, or display them in sequence
-    data=sourcedata.(parameter);
+    sz = size(sourcedata.(parameter));
+    data=reshape(sourcedata.(parameter), sz(1), []);
 
     if nargin < 6 || isempty(interptype) 
         interptype = 'trilinear';
@@ -88,8 +89,14 @@ sourcedata.pos=brainordinate.pos;
 sourcedata.tri=brainordinate.tri;
 sourcedata.(parameter) = [vl.cdata; vr.cdata];
 cfgp.funparameter=parameter;
-cfgp.xparam='freq';
-cfgp.yparam=[];
+if numel(size(sourcedata.(parameter)))<=2
+  cfgp.xparam='freq';
+  cfgp.yparam=[];
+else
+  cfgp.xparam='time';
+  cfgp.yparam='freq';
+end
+
 cfgp.funcolormap = flipud(brewermap(16, 'RdBu'));
 % cfgp.funcolorlim = [-2.5 2.5];
 % cfgp.colormap=cfgp.funcolormap;
