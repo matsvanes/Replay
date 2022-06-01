@@ -1,4 +1,4 @@
-function [topphase, botphase] = get_percentilePhase(prob, phase, t_window, percentile, mask)
+function [topphase, topidx, botphase, botidx] = get_percentilePhase(prob, phase, t_window, percentile, mask)
 
 if nargin<5, mask=[]; end
 
@@ -12,7 +12,7 @@ if ~isempty(mask)
   topidx = topidx(ismember(topidx, find(mask)));
 end
 
-if nargout>1
+if nargout>2
   % get bottom percentile probabilities
   botperc = prob < prctile(prob(:),percentile);
   botperc = [zeros(size(topperc,1),1),diff(botperc,[],2)]==1;% eliminate adjacent points
