@@ -6,8 +6,10 @@ STUDYII_SpecifySubjects_ALL_forCam;
 dir = pwd;
 if isfolder('/Users/matsvanes/')
     is.studydir = '/Users/matsvanes/Data/YunzheData/';
+    resultsdir = '/Users/matsvanes/Data/YunzheData/Mats/Study2/';
 else
     is.studydir = '/ohba/pi/mwoolrich/datasets/ReplayData/';
+    resultsdir =  '/ohba/pi/mwoolrich/mvanes/Projects/Replay/Study2/';
 end
 data_dir = [is.studydir, 'StrLearn_MEGexp/'];
 is.fs = filesep;
