@@ -14,11 +14,10 @@ if whichstudy==1
   MFStartup;
 else
   MFStartup_studyII;
-  load('/Users/matsvanes/Data/YunzheData/StrLearn_MEGexp/BehavData/Exptrial.mat')
+  load([is.rootBehav,  'Exptrial.mat'])
   is.dirname='StrLearn_MEGexp/';
   is.matsdir = '/Users/matsvanes/Data/YunzheData/Mats/Study2/';
 end
-datadir = [is.studydir,'Neuron2020Analysis/Study2/bfnew_1to45hz/'];
 if ~isfolder(is.AnalysisPath),   mkdir(is.AnalysisPath), end
 is.usePrecomputed = true;
 is.iRun = 2;
@@ -127,7 +126,7 @@ for iSj=1:length(is.goodsub)
   sprintf('Get phase time course | Subject %d', iSj)
 
   if isstr(FOI) && strcmp(FOI, 'emd')
-    tmp=load([is.matsdir, sprintf('phase/emd_session%d', iSj*2)]);
+    tmp=load([is.AnalysisPath, sprintf('phase/emd_session%d', iSj*2)]);
     IF(iSj, :, :) = squeeze(mean(tmp.IF(:,triggerpoints{iSj},:),2));   
     phase{iSj} = permute(tmp.IP(:, triggerpoints{iSj},:), [1,3,2]);
   else
@@ -154,7 +153,7 @@ for iSj = 1:length(is.goodsub)
   RredsAll{iSj} = Rreds{1,37,1,is.lambda}; % select the decoding results of the correct model
   probAll{iSj} =  1./(1+exp(RredsAll{iSj})); % transform decoding results to probabilities
   % compute phase non-uniformity of the top percentile probabilities
-  fname = [is.matsdir, 'phasePreference/', sprintf('phasePrefReactivation%d_%d', iSj, is.iRun), substring];
+  fname = [is.AnalysisPath, 'phasePreference/', sprintf('phasePrefReactivation%d_%d', iSj, is.iRun), substring];
   if is.useMask 
     fname = [fname, sprintf('_mask_%dk', is.useMask)];
     temporalMask = vpath(iSj,:)==is.useMask;
@@ -260,22 +259,22 @@ startup
 stat.avg = GA_phasepref_reactivation;
 stat.weighted_avg = squeeze(mean(WGA_phasepref_reactivation));
 
-filename = [is.matsdir, 'phasePreference/', 'phasepreference_reactivation', substring];
+filename = [is.AnalysisPath, 'phasePreference/', 'phasepreference_reactivation', substring];
 if is.useMask, filename = [filename, sprintf('_mask_%dk', is.useMask)]; end
 save(filename, 'stat', 'cfgs', 'phasepref_reactivation', 'WGA_phasepref_reactivation')
 
 % Visualize mean difference
-filename = [is.matsdir 'phasePreference/', 'phasepreference_reactivation', substring, '_GA'];
+filename = [is.AnalysisPath 'phasePreference/', 'phasepreference_reactivation', substring, '_GA'];
 if is.useMask, filename = [filename, sprintf('_mask_%dk', is.useMask)]; end
 parc.savenii(GA_phasepref_reactivation, filename);
 plot_surface_movie(parc, stat, 'avg', [], false)
 
-filename = [is.matsdir 'phasePreference/', 'phasepreference_reactivation', substring, '_WGA'];
+filename = [is.AnalysisPath 'phasePreference/', 'phasepreference_reactivation', substring, '_WGA'];
 if is.useMask, filename = [filename, sprintf('_mask_%dk', is.useMask)]; end
 parc.savenii(WGA_phasepref_reactivation, filename);
 plot_surface_movie(parc, stat, 'weighted_avg', [], false)
 
-filename = [is.matsdir 'phasePreference/', 'phasepreference_reactivation', substring, '_tstat'];
+filename = [is.AnalysisPath 'phasePreference/', 'phasepreference_reactivation', substring, '_tstat'];
 if is.useMask, filename = [filename, sprintf('_mask_%dk', is.useMask)]; end
 parc.savenii(stat.stat, filename);
 plot_surface_movie(parc, stat, 'stat', [], false)
@@ -288,7 +287,7 @@ if whichstudy==1
   tmp=load([wd,'GenericReplayData/STUDYI_ReplayOnset/RwdReplay2ndOnset'],'ToRall');
   replayScores = tmp.ToRall;
 else
-  StimAll = load([is.AnalysisPath, 'classifiers/Sequence_by_Training_4Cell/StimAll.mat']);
+  StimAll = load([is.studydir, 'StrLearn_MEGexp/Analysis/classifiers/Sequence_by_Training_4Cell/StimAll.mat']);
   sfAll = StimAll.sfAll;
   sbAll = StimAll.sbAll;
   [~, ~, Mreplay, ~] = find_bestLambda(is, sfAll, sbAll);
@@ -299,7 +298,7 @@ end
 replayScoresPerm = zeros(22,30000,is.nPerm);
 for iSj=1:length(is.goodsub)
   % compute phase non-uniformity of the top percentile Replay scores
-  fname = [is.matsdir, 'phasePreference/', sprintf('phasePrefReplay%d_%d', iSj, is.iRun), substring];
+  fname = [is.AnalysisPath, 'phasePreference/', sprintf('phasePrefReplay%d_%d', iSj, is.iRun), substring];
   if is.useMask
     fname = [fname, sprintf('_mask_%dk', is.useMask)];
     temporalMask = vpath(iSj,:)==is.useMask;
@@ -318,7 +317,7 @@ is.doPermutation=true;
 clear ZtopPhasePerm
 try
   for iSj=1:length(is.goodsub)
-    fname = [is.matsdir, 'phasePreference/', sprintf('phasePrefReplay%d_%d', iSj, is.iRun), substring];
+    fname = [is.AnalysisPath, 'phasePreference/', sprintf('phasePrefReplay%d_%d', iSj, is.iRun), substring];
     if is.useMask, fname = [fname, sprintf('_mask_%dk', is.useMask)]; end
     fname = [fname, '_perm'];
     tmp=load(fname);
@@ -329,7 +328,7 @@ catch
   % order to find it, we use Mreplay (group mean replay) to feed into
   % compute_sequenceness
   is.plot=false;
-  StimAll = load([is.AnalysisPath, 'classifiers/Sequence_by_Training_4Cell/StimAll.mat']);
+  StimAll = load([is.studydir, 'StrLearn_MEGexp/Analysis/classifiers/Sequence_by_Training_4Cell/StimAll.mat']);
   sfAll = StimAll.sfAll;
   sbAll = StimAll.sbAll;
   [~, ~, Mreplay, ~] = find_bestLambda(is, sfAll, sbAll);
@@ -345,7 +344,7 @@ catch
     for iPerm=1:is.nPerm
       [~, ZtopPhasePerm(:,:,iPerm)] = phase_nonuniformity(squeeze(replayScoresPerm(iSj,:,iPerm))', phase{iSj}, is, [], temporalMask);
     end
-    fname = [is.matsdir, 'phasePreference/', sprintf('phasePrefReplay%d_%d', iSj, is.iRun), substring];
+    fname = [is.AnalysisPath, 'phasePreference/', sprintf('phasePrefReplay%d_%d', iSj, is.iRun), substring];
     if is.useMask, fname = [fname, sprintf('_mask_%dk', is.useMask)]; end
     fname = [fname, '_perm'];
     if ischar(FOI)
@@ -415,22 +414,22 @@ startup
 stat.avg = GA_phasepref_replay;
 stat.weighted_avg = squeeze(mean(WGA_phasepref_replay));
 
-filename = [is.matsdir 'phasePreference/', 'phasepreference_replay', substring];
+filename = [is.AnalysisPath 'phasePreference/', 'phasepreference_replay', substring];
 if is.useMask, filename = [filename, sprintf('_mask_%dk', is.useMask)]; end
 save(filename, 'stat', 'cfgs', 'phasepref_replay')
 
 % Visualize mean difference
-filename = [is.matsdir 'phasePreference/', 'phasepreference_replay', substring, '_GA'];
+filename = [is.AnalysisPath 'phasePreference/', 'phasepreference_replay', substring, '_GA'];
 if is.useMask, filename = [filename, sprintf('_mask_%dk', is.useMask)]; end
 parc.savenii(GA_phasepref_replay, filename);
 plot_surface_movie(parc, stat, 'avg', [], false)
 
-filename = [is.matsdir 'phasePreference/', 'phasepreference_replay', substring, '_WGA'];
+filename = [is.AnalysisPath 'phasePreference/', 'phasepreference_replay', substring, '_WGA'];
 if is.useMask, filename = [filename, sprintf('_mask_%dk', is.useMask)]; end
 parc.savenii(WGA_phasepref_replay, filename);
 plot_surface_movie(parc, stat, 'weighted_avg', [], false)
 
-filename = [is.matsdir 'phasePreference/', 'phasepreference_replay', substring, '_tstat'];
+filename = [is.AnalysisPath 'phasePreference/', 'phasepreference_replay', substring, '_tstat'];
 if is.useMask, filename = [filename, sprintf('_mask_%dk', is.useMask)]; end
 parc.savenii(stat.stat, filename);
 plot_surface_movie(parc, stat, 'stat', [], false)
